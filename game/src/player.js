@@ -1,189 +1,186 @@
-// The player: Dana Reyes, courier turned wheelman. On foot she walks and
-// runs, punches and shoots; in a car she drives with arcade physics. She
-// can steal any parked or traffic car, and her health, cash and ammo live here.
-import { TUNING, CAR_MODELS } from './config.js';
-import { clamp, dist, angleDiff } from './random.js';
-import { resolveBuildingCollision, inWater, onSand } from './world.js';
-import { makeTrafficCar } from './traffic.js';
+// The player: Kit Vela, driver with no car and big debts.
+// On foot Kit walks, sprints and punches; in a car Kit drives with simple
+// arcade physics. Any parked or traffic car can be taken with E, which is
+// a crime and raises the wanted level. Health, cash and the current car
+// live here.
+import { TUNING } from './config.js';
+import { clamp, dist, angleDiff, turnToward } from './random.js';
+import { collideCircle } from './world.js';
 
-export class Player {
-  constructor(x, y) {
-    this.x = x;
-    this.y = y;
-    this.angle = -Math.PI / 2;
-    this.health = 100;
-    this.cash = TUNING.startingCash;
-    this.ammo = TUNING.startingAmmo;
-    this.score = 0;
-    this.onFoot = true;
-    this.inCar = false;
-    this.car = null;
-    this.speed = 0;
-    this.punchTimer = 0;
-    this.shootTimer = 0;
-    this.hurtTimer = 0;
-    this.lastDamage = '';
-    this.muzzle = 0;
-    this.parked = [];
+export function createPlayer(x, y) {
+  return {
+    x, y,
+    angle: -Math.PI / 2,
+    speed: 0,
+    onFoot: true,
+    car: null,
+    health: 100,
+    cash: 0,
+    punchTimer: 0,
+    punchCooldown: 0,
+    punchHit: false,
+    hurtFlash: 0,
+    sprinting: false,
+  };
+}
+
+export function nearestCar(player, cars, maxDist) {
+  let best = null;
+  let bestD = maxDist;
+  for (const car of cars) {
+    if (car.police) continue;
+    const d = dist(player.x, player.y, car.x, car.y);
+    if (d < bestD) { bestD = d; best = car; }
   }
+  return best;
+}
 
-  reset(x, y) {
-    this.x = x;
-    this.y = y;
-    this.angle = -Math.PI / 2;
-    this.health = 100;
-    this.onFoot = true;
-    this.inCar = false;
-    this.car = null;
-    this.speed = 0;
-  }
+export function updatePlayer(player, dt, input, world, cars, onEvent) {
+  player.punchCooldown = Math.max(0, player.punchCooldown - dt);
+  player.hurtFlash = Math.max(0, player.hurtFlash - dt);
 
-  damage(amount, cause) {
-    if (this.health <= 0) return;
-    this.health = Math.max(0, this.health - amount);
-    this.hurtTimer = 0.35;
-    if (cause) this.lastDamage = cause;
-  }
-
-  heal(amount) {
-    this.health = clamp(this.health + amount, 0, 100);
-  }
-
-  addCash(amount) {
-    this.cash += amount;
-    this.score += Math.max(0, amount);
-  }
-
-  enterCar(car, police) {
-    if (this.inCar) return false;
-    this.car = car;
-    this.inCar = true;
-    this.onFoot = false;
-    this.x = car.x;
-    this.y = car.y;
-    this.angle = car.angle;
-    this.speed = 0;
-    return true;
-  }
-
-  exitCar() {
-    if (!this.inCar || !this.car) return;
-    const car = this.car;
-    // Step out to the side of the car.
-    const side = Math.PI / 2;
-    this.x = car.x + Math.cos(car.angle + side) * 34;
-    this.y = car.y + Math.sin(car.angle + side) * 34;
-    this.angle = car.angle;
-    this.inCar = false;
-    this.onFoot = true;
-    this.speed = 0;
-    this.car = null;
-  }
-
-  nearestCar(cars, maxDist) {
-    let best = null;
-    let bestD = maxDist;
-    for (const c of cars) {
-      const d = dist(this.x, this.y, c.x, c.y);
-      if (d < bestD) { bestD = d; best = c; }
+  if (player.onFoot) {
+    const move = input.moveVector();
+    player.sprinting = input.down('ShiftLeft', 'ShiftRight');
+    const speed = player.sprinting ? TUNING.runSpeed : TUNING.walkSpeed;
+    if (move.x !== 0 || move.y !== 0) {
+      const target = Math.atan2(move.y, move.x);
+      player.angle = turnToward(player.angle, target, dt * 12);
+      const nx = player.x + move.x * speed * dt;
+      const ny = player.y + move.y * speed * dt;
+      const solved = collideCircle(world, nx, ny, 14);
+      player.x = solved.x;
+      player.y = solved.y;
+      player.speed = speed;
+    } else {
+      player.speed = 0;
     }
-    return best;
-  }
-
-  updateOnFoot(dt, input, world, game) {
-    const ax = input.axis();
-    const running = input.down('ShiftLeft') || input.down('ShiftRight');
-    const sp = running ? TUNING.runSpeed : TUNING.walkSpeed;
-    let mx = ax.x;
-    let my = ax.y;
-    const len = Math.hypot(mx, my);
-    if (len > 0) {
-      mx /= len;
-      my /= len;
-      this.angle = Math.atan2(my, mx);
-    }
-    const pos = { x: this.x + mx * sp * dt, y: this.y + my * sp * dt };
-    resolveBuildingCollision(world, pos, 16);
-    // Water blocks the player; sand slows her a little.
-    if (!inWater(pos.x, pos.y)) {
-      const slow = onSand(pos.x, pos.y) ? 0.75 : 1;
-      this.x = pos.x;
-      this.y = pos.y;
-      if (slow < 1 && len > 0) {
-        this.x = this.x - mx * sp * dt * 0.25;
-        this.y = this.y - my * sp * dt * 0.25;
+    if (player.punchTimer > 0) player.punchTimer -= dt;
+    if (input.wasPressed('Space') || input.mouseClicked) {
+      if (player.punchCooldown <= 0) {
+        player.punchCooldown = TUNING.punchCooldown;
+        player.punchTimer = 0.18;
+        player.punchHit = true;
+        onEvent({ type: 'punch' });
       }
     }
-    this.x = clamp(this.x, 30, 3170);
-    this.y = clamp(this.y, 30, 2110);
-    this.speed = len > 0 ? sp : 0;
-    if (this.hurtTimer > 0) this.hurtTimer -= dt;
-    if (this.punchTimer > 0) this.punchTimer -= dt;
-    if (this.shootTimer > 0) this.shootTimer -= dt;
-    if (this.muzzle > 0) this.muzzle -= dt;
-
-    // Punch: Space swings at whatever is in front.
-    if (input.wasPressed('Space') && this.punchTimer <= 0) {
-      this.punchTimer = 0.45;
-      game.punch(this);
+  } else if (player.car) {
+    const car = player.car;
+    const forward = input.down('KeyW', 'ArrowUp');
+    const back = input.down('KeyS', 'ArrowDown');
+    const left = input.down('KeyA', 'ArrowLeft');
+    const right = input.down('KeyD', 'ArrowRight');
+    const boost = input.down('ShiftLeft', 'ShiftRight');
+    const maxSpeed = TUNING.carMaxSpeed * (boost ? 1.25 : 1);
+    if (forward) car.speed += TUNING.carAccel * dt * (boost ? 1.3 : 1);
+    if (back) {
+      car.speed -= car.speed > 20 ? TUNING.carBrake * dt : TUNING.carAccel * 0.6 * dt;
     }
-    // Shoot: KeyF fires the pistol toward the facing direction.
-    if (input.wasPressed('KeyF') && this.shootTimer <= 0 && this.ammo > 0) {
-      this.shootTimer = 0.32;
-      this.ammo -= 1;
-      this.muzzle = 0.09;
-      game.shoot(this);
-    }
-  }
-
-  updateDriving(dt, input, world, game) {
-    const car = this.car;
-    if (!car) { this.inCar = false; this.onFoot = true; return; }
-    const ax = input.axis();
-    const model = CAR_MODELS.find((m) => m.name === car.model) || CAR_MODELS[1];
-    const top = (model.top || 210) * (car.kind === 'police' ? 1 : 1.9);
-    const accel = TUNING.carAccel * (model.accel / 380);
-    if (ax.y < 0) car.speed += accel * dt;
-    else if (ax.y > 0) car.speed -= (car.speed > 0 ? accel * 1.4 : TUNING.carReverse) * dt;
-    else {
-      car.speed -= car.speed * TUNING.carDrag * dt;
+    if (!forward && !back) {
+      car.speed -= car.speed * TUNING.carDrag * dt * 2;
       if (Math.abs(car.speed) < 4) car.speed = 0;
     }
-    if (input.down('Space')) car.speed -= car.speed * 2.6 * dt;
-    car.speed = clamp(car.speed, -90, top);
-    // Steering bites harder the faster the car goes, then washes out.
-    const steer = ax.x * (model.grip || 3) * clamp(Math.abs(car.speed) / 90, 0, 1) * (car.speed >= 0 ? 1 : -1);
-    car.angle += steer * dt * (car.speed >= 0 ? 1 : -1) * 0.9;
+    car.speed = clamp(car.speed, -TUNING.carReverseMax, maxSpeed);
+    const steer = (left ? -1 : 0) + (right ? 1 : 0);
+    const dir = car.speed >= 0 ? 1 : -1;
+    if (steer !== 0 && Math.abs(car.speed) > 12) {
+      car.angle += steer * TUNING.carTurn * dt * dir * clamp(Math.abs(car.speed) / 220, 0.35, 1);
+    }
     const nx = car.x + Math.cos(car.angle) * car.speed * dt;
     const ny = car.y + Math.sin(car.angle) * car.speed * dt;
-    const pos = { x: nx, y: ny };
-    const hitBuilding = resolveBuildingCollision(world, pos, 24);
-    if (hitBuilding) {
-      car.speed *= 0.45;
-      game.crashSound();
+    const solved = collideCircle(world, nx, ny, 20);
+    if (Math.abs(solved.x - nx) > 0.5 || Math.abs(solved.y - ny) > 0.5) {
+      if (Math.abs(car.speed) > 160) onEvent({ type: 'crash', speed: Math.abs(car.speed) });
+      car.speed *= 0.35;
     }
-    if (!inWater(pos.x, pos.y)) {
-      car.x = pos.x;
-      car.y = pos.y;
-    } else {
-      car.speed *= 0.5;
+    car.x = solved.x;
+    car.y = solved.y;
+    player.x = car.x;
+    player.y = car.y;
+    player.angle = car.angle;
+    player.speed = Math.abs(car.speed);
+    onEvent({ type: 'drive', speedRatio: Math.abs(car.speed) / TUNING.carMaxSpeed });
+  }
+  return player;
+}
+
+export function tryEnterCar(player, cars, onEvent) {
+  if (!player.onFoot) return false;
+  const car = nearestCar(player, cars, 64);
+  if (!car) return false;
+  car.stolen = true;
+  car.driver = 'player';
+  player.car = car;
+  player.onFoot = false;
+  player.x = car.x;
+  player.y = car.y;
+  player.angle = car.angle;
+  onEvent({ type: 'stealCar', car });
+  return true;
+}
+
+export function exitCar(player, world, onEvent) {
+  if (player.onFoot || !player.car) return false;
+  const car = player.car;
+  car.driver = null;
+  const side = player.angle + Math.PI / 2;
+  const ex = car.x + Math.cos(side) * 34;
+  const ey = car.y + Math.sin(side) * 34;
+  const solved = collideCircle(world, ex, ey, 14);
+  player.x = solved.x;
+  player.y = solved.y;
+  player.angle = car.angle;
+  player.car = null;
+  player.onFoot = true;
+  player.speed = 0;
+  onEvent({ type: 'exitCar', car });
+  return true;
+}
+
+// Punch: hits the nearest pedestrian, cop or traffic car in front of Kit.
+export function resolvePunch(player, peds, cops, cars, onEvent) {
+  if (!player.punchHit) return;
+  player.punchHit = false;
+  const px = player.x + Math.cos(player.angle) * 26;
+  const py = player.y + Math.sin(player.angle) * 26;
+  let hitSomething = false;
+  for (const ped of peds) {
+    if (ped.down) continue;
+    if (dist(px, py, ped.x, ped.y) < TUNING.punchRange) {
+      ped.health -= TUNING.punchDamage;
+      ped.fleeing = true;
+      if (ped.health <= 0) ped.down = true;
+      hitSomething = true;
+      onEvent({ type: 'hitPed', ped });
+      break;
     }
-    car.x = clamp(car.x, 30, 3170);
-    car.y = clamp(car.y, 30, 2105);
-    this.x = car.x;
-    this.y = car.y;
-    this.angle = car.angle;
-    this.speed = car.speed;
-    if (this.hurtTimer > 0) this.hurtTimer -= dt;
-    if (this.muzzle > 0) this.muzzle -= dt;
-    // Bumping pedestrians while driving is a crime.
-    for (const ped of game.peds) {
-      if (ped.down) continue;
-      if (dist(car.x, car.y, ped.x, ped.y) < 30 && Math.abs(car.speed) > 70) {
-        ped.down = true;
-        ped.downTimer = 6;
-        game.crime('hitPedestrian', ped);
+  }
+  if (!hitSomething) {
+    for (const cop of cops) {
+      if (dist(px, py, cop.x, cop.y) < TUNING.punchRange) {
+        cop.health -= TUNING.punchDamage;
+        hitSomething = true;
+        onEvent({ type: 'hitCop', cop });
+        break;
       }
     }
   }
+  if (!hitSomething) {
+    for (const car of cars) {
+      if (car === player.car) continue;
+      if (dist(px, py, car.x, car.y) < TUNING.punchRange + 12) {
+        car.health = Math.max(0, (car.health || 100) - 12);
+        hitSomething = true;
+        onEvent({ type: 'hitCar', car });
+        break;
+      }
+    }
+  }
+  if (hitSomething) onEvent({ type: 'punchLanded' });
+}
+
+export function damagePlayer(player, amount) {
+  player.health = Math.max(0, player.health - amount);
+  player.hurtFlash = 0.35;
+  return player.health <= 0;
 }

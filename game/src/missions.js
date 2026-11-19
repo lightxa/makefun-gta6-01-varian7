@@ -1,134 +1,142 @@
-// Missions and story. Five jobs from Mama Sol and Vex, each a chain of
-// steps: go somewhere, steal a car, drive through checkpoints, lose the
-// police, grab the cash and run. Completing a job pays cash and unlocks the
-// next; the story ends when the Big Score is done.
+// Missions and story for Solmar Bay.
+// Five jobs from Rosa Marlin and Dario Sol, each a chain of steps: take a
+// car, pick up and deliver, lose the police, beat the clock through
+// checkpoints, then hold the bank plaza and run. Completing a job pays cash
+// and unlocks the next; finishing the fifth ends the story arc.
 import { MISSIONS } from './config.js';
 import { dist } from './random.js';
 
-export class MissionManager {
-  constructor() {
-    this.index = 0;
-    this.stepIndex = 0;
-    this.active = null;
-    this.done = false;
-    this.failed = false;
-    this.failReason = '';
-    this.timer = 0;
-    this.stepTimer = 0;
-    this.message = '';
-    this.messageTimer = 0;
-  }
+export function createMissions() {
+  return {
+    index: 0,
+    stepIndex: 0,
+    active: false,
+    done: false,
+    completed: [],
+    timer: 0,
+    holdTimer: 0,
+    message: '',
+    messageTimer: 0,
+  };
+}
 
-  get current() {
-    return MISSIONS[this.index] || null;
-  }
+export function currentMission(missions) {
+  if (missions.index >= MISSIONS.length) return null;
+  return MISSIONS[missions.index];
+}
 
-  get step() {
-    const m = this.current;
-    return m ? m.steps[this.stepIndex] : null;
-  }
+export function currentStep(missions) {
+  const mission = currentMission(missions);
+  if (!mission) return null;
+  return mission.steps[missions.stepIndex] || null;
+}
 
-  get objective() {
-    if (this.done) return 'Story complete — Solmar Bay is yours, Dana.';
-    if (!this.current) return '';
-    const s = this.step;
-    return s ? s.label : '';
-  }
+export function startMission(missions, index) {
+  missions.index = index;
+  missions.stepIndex = 0;
+  missions.active = true;
+  missions.done = false;
+  missions.timer = 0;
+  missions.holdTimer = 0;
+  const mission = MISSIONS[index];
+  missions.message = mission.title + ' — ' + mission.giver;
+  missions.messageTimer = 4;
+  return mission;
+}
 
-  start(index) {
-    this.index = index;
-    this.stepIndex = 0;
-    this.done = false;
-    this.failed = false;
-    this.timer = 0;
-    this.stepTimer = 0;
-    const m = this.current;
-    if (m && m.steps[0] && m.steps[0].time) this.stepTimer = m.steps[0].time;
-    this.showMessage(`${m.title} — ${m.giver}: ${m.brief}`, 6);
-  }
+export function stepTarget(missions, world) {
+  const step = currentStep(missions);
+  if (!step || !step.at) return null;
+  const spot = world.landmarks[step.at];
+  return spot ? { x: spot.x, y: spot.y, label: spot.label } : null;
+}
 
-  showMessage(text, seconds) {
-    this.message = text;
-    this.messageTimer = seconds || 4;
+function advanceStep(missions, onEvent) {
+  const mission = currentMission(missions);
+  missions.stepIndex += 1;
+  missions.holdTimer = 0;
+  missions.timer = 0;
+  if (missions.stepIndex >= mission.steps.length) {
+    missions.active = false;
+    missions.done = true;
+    missions.completed.push(mission.id);
+    missions.message = 'Job done: ' + mission.title + ' — $' + mission.reward;
+    missions.messageTimer = 5;
+    onEvent({ type: 'missionComplete', mission });
+  } else {
+    const next = mission.steps[missions.stepIndex];
+    missions.message = next.text;
+    missions.messageTimer = 3.5;
+    onEvent({ type: 'stepComplete', mission, step: next });
   }
+}
 
-  advance(game) {
-    const m = this.current;
-    this.stepIndex += 1;
-    if (this.stepIndex >= m.steps.length) {
-      game.player.addCash(m.reward);
-      game.audio.cash();
-      this.showMessage(`Job done: ${m.title} — paid $${m.reward}.`, 5);
-      game.saveGame();
-      this.index += 1;
-      if (this.index >= MISSIONS.length) {
-        this.done = true;
-        this.active = null;
-        this.showMessage('THE BIG SCORE is done. Solmar Bay is yours.', 8);
+export function updateMissions(missions, dt, player, world, police, onEvent) {
+  if (missions.messageTimer > 0) missions.messageTimer -= dt;
+  if (!missions.active) return;
+  const mission = currentMission(missions);
+  if (!mission) return;
+  const step = currentStep(missions);
+  if (!step) return;
+
+  if (step.type === 'enterCar') {
+    if (!player.onFoot) advanceStep(missions, onEvent);
+    return;
+  }
+  if (step.type === 'wanted') {
+    if (police.level >= step.level) advanceStep(missions, onEvent);
+    return;
+  }
+  if (step.type === 'loseHeat') {
+    if (police.level === 0) advanceStep(missions, onEvent);
+    return;
+  }
+  if (step.type === 'pickup' || step.type === 'reach' || step.type === 'hold' || step.type === 'checkpoint') {
+    const target = stepTarget(missions, world);
+    if (!target) return;
+    const d = dist(player.x, player.y, target.x, target.y);
+    if (step.type === 'checkpoint') {
+      missions.timer += dt;
+      if (d < 70) {
+        advanceStep(missions, onEvent);
         return;
       }
-      this.stepIndex = 0;
-      const next = this.current;
-      this.showMessage(`New job: ${next.title} — ${next.giver}: ${next.brief}`, 7);
-    }
-    const s = this.step;
-    this.stepTimer = s && s.time ? s.time : 0;
-  }
-
-  fail(reason) {
-    this.failed = true;
-    this.failReason = reason;
-    this.showMessage(`Job failed: ${reason}. Press R to retry the job.`, 6);
-  }
-
-  retry() {
-    this.failed = false;
-    this.failReason = '';
-    this.start(this.index);
-  }
-
-  update(dt, game) {
-    if (this.messageTimer > 0) this.messageTimer -= dt;
-    if (this.done || !this.current || this.failed) return;
-    const m = this.current;
-    const s = this.step;
-    if (!s) return;
-    this.timer += dt;
-    const p = game.player;
-    if (s.time) {
-      this.stepTimer -= dt;
-      if (this.stepTimer <= 0) {
-        this.fail('Out of time.');
-        return;
+      if (missions.timer >= step.time) {
+        missions.active = false;
+        missions.message = 'Too slow — the checkpoint closed. Talk to Dario to retry.';
+        missions.messageTimer = 5;
+        onEvent({ type: 'missionFailed', mission, reason: 'checkpoint timeout' });
       }
+      return;
     }
-    if (s.kind === 'goto' || s.kind === 'driveTo') {
-      const needCar = s.kind === 'driveTo';
-      if (needCar && !p.inCar) return;
-      if (dist(p.x, p.y, s.x, s.y) < s.radius) {
-        this.advance(game);
+    if (step.type === 'hold') {
+      if (d < 90) {
+        missions.holdTimer += dt;
+        if (missions.holdTimer >= step.seconds) advanceStep(missions, onEvent);
+      } else {
+        missions.holdTimer = Math.max(0, missions.holdTimer - dt);
       }
-    } else if (s.kind === 'steal') {
-      // Stealing is completed by the game's steal handler calling completeStep.
-      if (dist(p.x, p.y, s.x, s.y) < s.radius && p.inCar) this.advance(game);
-    } else if (s.kind === 'escape') {
-      // Mission 4: the escape step is set up by the game (wanted 3). It
-      // completes when the wanted level has fully decayed.
-      if (game.police.stars === 0 && this.timer > 4) {
-        this.advance(game);
-      }
+      return;
     }
+    if (d < 70) advanceStep(missions, onEvent);
   }
+}
 
-  // Called by the game when the player steals the mission car.
-  completeStep(game) {
-    const s = this.step;
-    if (s && s.kind === 'steal') this.advance(game);
-  }
+export function failMission(missions, reason) {
+  missions.active = false;
+  missions.message = 'Job failed: ' + reason + '. The job is still open — start it again.';
+  missions.messageTimer = 5;
+}
 
-  // Mission 4 setup: called when the job starts.
-  isEscapeMission() {
-    const m = this.current;
-    return m && m.id === 4;
+export function retryMission(missions) {
+  missions.stepIndex = 0;
+  missions.active = true;
+  missions.done = false;
+  missions.timer = 0;
+  missions.holdTimer = 0;
+  const mission = currentMission(missions);
+  if (mission) {
+    missions.message = mission.title + ' — try again';
+    missions.messageTimer = 3;
   }
 }
