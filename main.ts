@@ -1,66 +1,89 @@
-// SOLMAR BAY — a gta6-01 entry (Node 22, standard library only).
-// The game is this directory's game/ folder: plain static files a desktop
-// browser loads offline (game/index.html and its ES modules, no library and
-// no network request). This program hands it in: it copies game/ and
-// screenshots/ from beside this file to the output directory and writes
-// dossier.json with the vendored make.fun library.
+// main.ts — Solmar Bay entrypoint for make.fun gta6-01.
 //
-// The output directory is /output by default, or MAKEFUN_OUTPUT_DIR
-// outside the grader. This program never deletes the output directory:
-// it only creates it (recursively) and copies files into it, so a file
-// that was already there survives the run untouched.
-//
+// Copies game/ and screenshots/ from this repository into the output
+// directory and writes dossier.json with buildDossier from the kit's
+// vendor/makefun-game.ts. It never deletes anything: the output directory
+// is only created (mkdir -p style), so a previous run's files can never be
+// wiped by this program. Run it with:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
-
-import { cpSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+// Outside the grader, MAKEFUN_OUTPUT_DIR stands in for /output.
 import { buildDossier } from './vendor/makefun-game.ts';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { join, resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const here = fileURLToPath(new URL('.', import.meta.url));
-const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)));
+const OUT_DIR = process.env.MAKEFUN_OUTPUT_DIR ? resolve(process.env.MAKEFUN_OUTPUT_DIR) : '/output';
 
-// Create the output directory if it is missing. Never remove anything
-// that is already inside it.
-mkdirSync(out, { recursive: true });
+const MAX_SCREENSHOTS = 4;
+const MIN_SCREENSHOTS = 3;
+const MAX_SCREENSHOT_BYTES = 256 * 1024;
 
-const gameDir = join(here, 'game');
-const shotsDir = join(here, 'screenshots');
-if (!existsSync(gameDir)) throw new Error('missing game/ directory beside main.ts');
-if (!existsSync(shotsDir)) throw new Error('missing screenshots/ directory beside main.ts');
-
-// Copy the whole game in. cpSync into an existing directory merges
-// without deleting other entries, which keeps the run deterministic
-// and safe for the grader's pre-seeded output directory.
-cpSync(gameDir, join(out, 'game'), { recursive: true });
-mkdirSync(join(out, 'screenshots'), { recursive: true });
-cpSync(shotsDir, join(out, 'screenshots'), { recursive: true });
-
-// Refuse an entry the scorer would refuse, before writing the dossier:
-// at most 4 screenshots, each at most 256 KiB, and a game/ within its
-// file and byte caps. These are hard checks, not warnings.
-const shots = readdirSync(join(out, 'screenshots')).filter((n) => !n.startsWith('.'));
-if (shots.length < 3 || shots.length > 4) {
-  throw new Error(`expected 3 or 4 screenshots, found ${shots.length}`);
-}
-for (const name of shots) {
-  const size = statSync(join(out, 'screenshots', name)).size;
-  if (size > 262144) throw new Error(`screenshot ${name} is ${size} bytes, over the 256 KiB cap`);
+function fail(message: string): never {
+  throw new Error(`main.ts: ${message}`);
 }
 
-// The scorer's own caps (reference/gate.json): only text_max_bytes shapes
-// the bytes; the others refuse an entry the scorer would refuse (more than
-// 4 screenshots or one over 256 KiB; more than 993 files in game/ or
-// 48 MiB of game files, in all, or a path under game/ over 1000 bytes).
-writeFileSync(
-  join(out, 'dossier.json'),
-  buildDossier(out, {
+function listFilesSorted(dir: string): string[] {
+  return readdirSync(dir).sort();
+}
+
+function copyTree(srcDir: string, dstDir: string): void {
+  mkdirSync(dstDir, { recursive: true });
+  for (const name of listFilesSorted(srcDir)) {
+    const src = join(srcDir, name);
+    const dst = join(dstDir, name);
+    const st = statSync(src);
+    if (st.isDirectory()) {
+      copyTree(src, dst);
+    } else if (st.isFile()) {
+      copyFileSync(src, dst);
+    }
+  }
+}
+
+function checkScreenshots(shotsDir: string): void {
+  if (!existsSync(shotsDir) || !statSync(shotsDir).isDirectory()) {
+    fail('screenshots/ is missing: the entry needs 3 or 4 screenshots');
+  }
+  const names = listFilesSorted(shotsDir).filter((n) => !n.startsWith('.'));
+  if (names.length < MIN_SCREENSHOTS || names.length > MAX_SCREENSHOTS) {
+    fail(`screenshots/ holds ${names.length} images, need ${MIN_SCREENSHOTS} to ${MAX_SCREENSHOTS}`);
+  }
+  for (const name of names) {
+    const p = join(shotsDir, name);
+    const st = statSync(p);
+    if (!st.isFile()) fail(`screenshots/${name} is not a regular file`);
+    if (!/^[A-Za-z0-9._-]+$/.test(name) || name.startsWith('-')) {
+      fail(`screenshots/${name}: bad screenshot file name`);
+    }
+    if (st.size > MAX_SCREENSHOT_BYTES) {
+      fail(`screenshots/${name} is ${st.size} bytes, over the 256 KiB limit`);
+    }
+  }
+}
+
+function main(): void {
+  const gameDir = join(REPO_ROOT, 'game');
+  const shotsDir = join(REPO_ROOT, 'screenshots');
+  if (!existsSync(gameDir) || !statSync(gameDir).isDirectory()) {
+    fail('game/ is missing: the playable game must live under game/');
+  }
+  checkScreenshots(shotsDir);
+
+  // Create the output directory, never delete it or anything inside it.
+  mkdirSync(OUT_DIR, { recursive: true });
+  copyTree(gameDir, join(OUT_DIR, 'game'));
+  copyTree(shotsDir, join(OUT_DIR, 'screenshots'));
+
+  const dossier = buildDossier(OUT_DIR, {
     text_max_bytes: 163840,
-    screenshots: { max: 4, max_bytes: 262144 },
+    screenshots: { max: 4, max_bytes: 256 * 1024 },
     game_max_files: 993,
-    game_max_bytes: 50331648,
+    game_max_bytes: 48 * 1024 * 1024,
     game_path_max_bytes: 1000,
-  }),
-);
+  });
+  writeFileSync(join(OUT_DIR, 'dossier.json'), dossier);
+  console.log(`Solmar Bay entry written to ${OUT_DIR} (dossier.json ${dossier.length} bytes)`);
+}
 
-console.log(`Solmar Bay handed in: ${shots.length} screenshots, dossier written to ${join(out, 'dossier.json')}`);
+main();

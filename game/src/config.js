@@ -1,156 +1,75 @@
-// Solmar Bay — configuration and story data.
-// An original sun-soaked coastal crime city. Every name, character,
-// district and vehicle here is invented; nothing comes from a commercial game.
-export const WORLD_W = 3600;
-export const WORLD_H = 2600;
-export const ROAD_W = 84;
-export const SEED_DEFAULT = 7;
+// config.js — tuning and look constants for Solmar Bay.
+// One place for every number that shapes how the city feels and plays.
+export const WORLD_W = 3200;
+export const WORLD_H = 2400;
+export const ROAD_STEP = 400;
+export const ROAD_HALF = 34;
+export const LANE = 17;
+export const SEA_X = 150;
+export const BEACH_W = 90;
 
-// Road centre lines. The city is a grid; the west edge is the beach and the
-// sea, the east edge the harbor docks.
-export const ROADS_X = [300, 700, 1100, 1500, 1900, 2300, 2700, 3100];
-export const ROADS_Y = [300, 650, 1000, 1350, 1700, 2050];
-export const BEACH_X = 120;
-export const WATER_X = 0;
-export const BEACH_W = 120;
+export const GAME_SEED = 20261119;
+
+export const COLORS = {
+  grass: '#7fae5a',
+  grassDark: '#74a24f',
+  sand: '#e8d29a',
+  sea: '#2e7fa8',
+  seaDeep: '#1f6a92',
+  road: '#3a3d44',
+  roadEdge: '#2c2f36',
+  lane: '#d8c95a',
+  sidewalk: '#b9b3a4',
+  park: '#5d9440',
+  plaza: '#c9c2b2',
+};
 
 export const DISTRICTS = [
-  { name: 'Marina', x: 150, y: 150, w: 800, h: 500, tint: '#7ec8e3' },
-  { name: 'Old Town', x: 150, y: 800, w: 800, h: 600, tint: '#e8b04b' },
-  { name: 'Palm Row', x: 1150, y: 150, w: 900, h: 600, tint: '#ff9d76' },
-  { name: 'Downtown', x: 1150, y: 900, w: 900, h: 700, tint: '#8fa8c8' },
-  { name: 'Harbor', x: 2250, y: 150, w: 900, h: 700, tint: '#5fa8a0' },
-  { name: 'Sunset Hills', x: 2250, y: 1000, w: 900, h: 600, tint: '#c98ad6' },
-];
-
-export const CAR_COLORS = [
-  '#e63946', '#f4a261', '#2a9d8f', '#4361ee', '#f7d154',
-  '#9d4edd', '#06d6a0', '#ef476f', '#118ab2', '#ffbe0b',
-  '#adb5bd', '#212529', '#e07a5f', '#81b29a',
+  { name: 'Marina', x0: 150, y0: 0, x1: 900, y1: 800, roof: ['#e8a06a', '#d98f5f', '#c97e52'], accent: '#2e7fa8' },
+  { name: 'Old Town', x0: 900, y0: 0, x1: 1900, y1: 1200, roof: ['#c96f4a', '#b95f3e', '#a85434'], accent: '#e8c85a' },
+  { name: 'Downtown', x0: 1900, y0: 0, x1: 3200, y1: 1200, roof: ['#5a7ea8', '#4a6e98', '#6a8eb8'], accent: '#7fb2d9' },
+  { name: 'Harbor', x0: 900, y0: 1200, x1: 3200, y1: 2400, roof: ['#8a7a5a', '#7a6a4a', '#9a8a6a'], accent: '#d98f5f' },
+  { name: 'Hills', x0: 150, y0: 800, x1: 900, y1: 2400, roof: ['#a85a6a', '#98504a', '#b86a5a'], accent: '#e8a06a' },
 ];
 
 export const CAR_MODELS = [
-  'Solstice', 'Pelican', 'Marlin GT', 'Cactus', 'Bayliner',
-  'Tortuga', 'Flamingo', 'Sardine', 'Coral', 'Hurricane',
+  { name: 'Solmar Comet', color: '#d94f3d', top: 430, accel: 320, grip: 2.6 },
+  { name: 'Bay Cruiser', color: '#3d7fd9', top: 380, accel: 260, grip: 2.2 },
+  { name: 'Palm Taxi', color: '#e8c832', top: 360, accel: 250, grip: 2.1 },
+  { name: 'Harbor Hauler', color: '#7a8a7a', top: 300, accel: 190, grip: 1.8 },
+  { name: 'Sunset Coupe', color: '#c93d8a', top: 450, accel: 340, grip: 2.8 },
+  { name: 'Marina Van', color: '#e8e8e8', top: 320, accel: 210, grip: 1.9 },
+  { name: 'Dune Buggy', color: '#e89a3d', top: 400, accel: 300, grip: 2.4 },
 ];
 
-export const PED_SHIRTS = [
-  '#e63946', '#2a9d8f', '#f4a261', '#4361ee', '#ffbe0b',
-  '#9d4edd', '#06d6a0', '#ef476f', '#118ab2', '#f1faee',
-];
-
-export const PALETTE = {
-  grass: '#7fb069',
-  grassDark: '#6a9a58',
-  sand: '#ecd9a0',
-  water: '#2a9dbe',
-  waterDeep: '#1d7a99',
-  road: '#3d3d4d',
-  roadLine: '#e8e8d0',
-  sidewalk: '#b8b0a0',
-  park: '#5da85f',
-  plaza: '#c9c2b4',
-  buildingRoof: ['#c96f4a', '#7d8aa5', '#a5b8d0', '#d9a441', '#8a6f9e', '#5f8a6a'],
-  buildingWall: ['#e8dcc8', '#d8c8b0', '#c8d4e0', '#e8c8a0', '#d0c0d8', '#c8e0c8'],
-};
-
-export const MISSIONS = [
-  {
-    id: 1,
-    title: 'First Wheels',
-    giver: 'Rosa Marlin',
-    briefing: 'Rosa needs wheels. Borrow a car from the street and bring it to her garage on Palm Row.',
-    reward: 250,
-    steps: [
-      { type: 'enterCar', text: 'Take a car — walk up to one and press E' },
-      { type: 'reach', at: 'garage', text: 'Drive to Rosa\u2019s garage' },
-    ],
-  },
-  {
-    id: 2,
-    title: 'Bayfront Pickup',
-    giver: 'Rosa Marlin',
-    briefing: 'A package is waiting at the marina. Pick it up on foot, then deliver it to the Palm Row cafe.',
-    reward: 500,
-    steps: [
-      { type: 'reach', at: 'marina', text: 'Go to the marina drop point' },
-      { type: 'pickup', at: 'marina', text: 'Pick up the package (stand on the marker)' },
-      { type: 'reach', at: 'cafe', text: 'Deliver the package to the Palm Row cafe' },
-    ],
-  },
-  {
-    id: 3,
-    title: 'The Getaway',
-    giver: 'Dario Sol',
-    briefing: 'The harbor crew tipped off the police. Lose the heat, then lay low at the safehouse.',
-    reward: 750,
-    steps: [
-      { type: 'wanted', level: 2, text: 'The police are on you — wanted level 2' },
-      { type: 'loseHeat', text: 'Lose the police (wanted level back to 0)' },
-      { type: 'reach', at: 'safehouse', text: 'Reach the safehouse in Sunset Hills' },
-    ],
-  },
-  {
-    id: 4,
-    title: 'Harbor Heat',
-    giver: 'Dario Sol',
-    briefing: 'Three checkpoints around the harbor, against the clock. Drive fast, drive clean.',
-    reward: 1000,
-    steps: [
-      { type: 'checkpoint', at: 'dockA', time: 45, text: 'Checkpoint 1 of 3 — Harbor Dock A' },
-      { type: 'checkpoint', at: 'dockB', time: 45, text: 'Checkpoint 2 of 3 — Harbor Dock B' },
-      { type: 'checkpoint', at: 'dockC', time: 45, text: 'Checkpoint 3 of 3 — Harbor Dock C' },
-    ],
-  },
-  {
-    id: 5,
-    title: 'The Solmar Job',
-    giver: 'Rosa Marlin',
-    briefing: 'One last job: hold the bank plaza for five seconds, grab the cash, and bring it home with the whole city chasing you.',
-    reward: 2500,
-    steps: [
-      { type: 'reach', at: 'bank', text: 'Go to the Downtown bank plaza' },
-      { type: 'hold', at: 'bank', seconds: 5, text: 'Hold the plaza — grab the cash!' },
-      { type: 'reach', at: 'safehouse', text: 'Escape to the safehouse with the cash' },
-    ],
-  },
-];
-
-export const STORY_INTRO =
-  'Solmar Bay: a sun-soaked coastal city where the tide brings in money and trouble in equal measure. ' +
-  'You are Kit Vela, a driver with no car and big debts. Rosa Marlin runs the garage on Palm Row. ' +
-  'Dario Sol runs the harbor. Work for both, stay ahead of the Solmar Bay Police, and buy your way out.';
-
-export const CONTROLS_TEXT = [
-  'WASD / Arrows — walk or drive',
-  'E — steal / enter a car, exit a car',
-  'Space or Click — punch / fight',
-  'Shift — sprint / boost',
-  'P or Esc — pause',
-  'M — mute sound',
-  'R — restart after busted or wasted',
-];
+export const PED_SHIRTS = ['#e85a5a', '#5a8ae8', '#5ae88a', '#e8d25a', '#c95ae8', '#e8e8e8', '#3a3a3a', '#e89a5a'];
 
 export const TUNING = {
-  walkSpeed: 170,
-  runSpeed: 265,
-  carAccel: 420,
-  carBrake: 620,
-  carMaxSpeed: 520,
-  carReverseMax: 180,
-  carTurn: 2.6,
-  carDrag: 0.55,
-  punchRange: 46,
+  walkSpeed: 185,
+  sprintSpeed: 265,
+  carReverseTop: 140,
+  brake: 520,
+  drag: 0.9,
+  offroadDrag: 1.6,
+  punchRange: 34,
   punchDamage: 34,
-  punchCooldown: 0.45,
-  wantedDecayDelay: 6,
-  policeCatchTime: 1.6,
+  playerHealth: 100,
+  copTouchDamage: 8,
+  wantedDecaySeconds: 26,
+  policeSpawnDelay: 2.2,
+  trafficCount: 26,
+  pedCount: 42,
+  coinCount: 20,
+  coinValue: 150,
+  taxiFare: 120,
 };
 
-export function districtAt(x, y) {
-  for (const d of DISTRICTS) {
-    if (x >= d.x && x < d.x + d.w && y >= d.y && y < d.y + d.h) return d.name;
-  }
-  if (x < BEACH_X + BEACH_W) return 'Solmar Beach';
-  return 'Solmar Bay';
-}
+export const CONTROLS = [
+  ['W A S D / arrows', 'Walk or drive'],
+  ['E', 'Steal / enter car, exit car, interact'],
+  ['Space', 'Handbrake'],
+  ['Shift', 'Sprint on foot'],
+  ['F', 'Punch'],
+  ['M', 'Mute sound'],
+  ['Esc / P', 'Pause'],
+];

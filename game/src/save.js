@@ -1,49 +1,43 @@
-// Save and load. Progress (completed missions, cash, health, position and
-// the seed) lives in localStorage under one key, so the game can be
-// continued after the browser closes. Saving never touches the network.
-const SAVE_KEY = 'solmar-bay-save-v1';
+// save.js — localStorage persistence for Solmar Bay.
+// The save holds cash, mission progress, coins and the player's last spot,
+// so a session survives a closed tab.
+const KEY = 'solmar-bay-save-v1';
 
 export function saveGame(state) {
   try {
     const data = {
-      version: 1,
-      savedAt: Date.now(),
-      seed: state.seed,
       cash: state.cash,
-      health: state.health,
       missionIndex: state.missionIndex,
-      completedMissions: state.completedMissions,
-      playerX: state.player.x,
-      playerY: state.player.y,
-      totalEarned: state.totalEarned,
+      missionsDone: state.missionsDone,
+      coinsTaken: state.coinsTaken,
+      taxiDone: state.taxiDone,
+      playerX: state.playerX,
+      playerY: state.playerY,
+      savedAt: Date.now(),
     };
-    window.localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+    window.localStorage.setItem(KEY, JSON.stringify(data));
     return true;
-  } catch {
+  } catch (err) {
     return false;
   }
 }
 
 export function loadGame() {
   try {
-    const raw = window.localStorage.getItem(SAVE_KEY);
+    const raw = window.localStorage.getItem(KEY);
     if (!raw) return null;
     const data = JSON.parse(raw);
-    if (!data || data.version !== 1) return null;
+    if (typeof data.cash !== 'number') return null;
     return data;
-  } catch {
+  } catch (err) {
     return null;
-  }
-}
-
-export function clearSave() {
-  try {
-    window.localStorage.removeItem(SAVE_KEY);
-  } catch {
-    // Storage unavailable; nothing to clear.
   }
 }
 
 export function hasSave() {
   return loadGame() !== null;
+}
+
+export function clearSave() {
+  try { window.localStorage.removeItem(KEY); } catch (err) { /* ignore */ }
 }
