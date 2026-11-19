@@ -2,78 +2,81 @@
 [![rank](https://make.fun/badge/gta6-01/lightxa/makefun-gta6-01-varian7/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![reward](https://make.fun/badge/gta6-01/lightxa/makefun-gta6-01-varian7/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
-# Solmar Bay — an open-world crime game
+# Solmar Bay
 
-Solmar Bay is a top-down 2D open-world crime game that runs entirely in the browser from static files. You play Rico Vega, a driver back in his hometown with empty pockets and a fast reputation. Fixer Marisol Reyes has five jobs that pay real money, the Solmar Bay Police Department has five stars of patience, and every car on Palm Ave is a ride waiting to be borrowed.
+An original open-world crime game in the spirit of GTA 6, built for the make.fun gta6-01 bounty. You play Marisol "Mari" Vega, a driver for hire in Solmar Bay, a sun-soaked coastal city of pastel rooftops, palm courts, a marina, a beach and a harbor. The city, its people, its story and its music are all invented for this game.
 
 ## What you do
 
-- **Explore a living city on foot and by car.** Five districts — Marina, Old Town, Downtown, Harbor and the Hills — connected by a road grid with traffic, pedestrians, parks, a beach and a plaza.
-- **Steal cars and drive.** Walk up to any car, press E, and it is yours. Arcade driving with a handbrake, skid marks and collisions. Stealing a car raises your wanted level.
-- **Run five story jobs.** First Wheels, Bayfront Pickup, Getaway Driver, Harbor Heist (a 90-second timed delivery) and King of the Bay (a final run under a full police chase). Each job pays cash and unlocks the next.
-- **Outrun the police.** Wanted stars from 1 to 5 bring patrol cars and officers who chase, ram and try to arrest you. Lay low and the heat fades; get caught and you pay a fine at the hospital.
-- **Fight, collect and earn on the side.** Punch with F, collect 20 hidden Bay coins, and take taxi fares from passengers waiting at Solmar Plaza.
-- **Save and continue.** Progress (cash, jobs done, coins, taxi fares, position) saves to local storage automatically and can be continued from the start screen.
+Explore the city on foot or by car, steal cars off the street, outrun the Solmar Bay Police Department, and work through a three-chapter story: steal a clean car for Rico's Garage, race the Bay Run checkpoints against the clock, and run a package through the Harbor Depot while shaking a two-star police tail. Between missions the city stays alive: traffic cruises the avenues, pedestrians stroll the sidewalks and run from trouble, and the police answer every crime with a pursuit.
 
 ## Systems
 
-- Wanted level with police pursuit, spawning and decay
-- Traffic cars that follow lanes and turn at intersections, plus pedestrians who flee from trouble
-- Mission engine with goto, steal, timed, lose-the-cops and survive steps
-- HUD with cash, health, clock, wanted stars, speedometer and a live minimap showing the player, police and the job marker
-- Synthesized sound: engine hum, two-tone sirens, effects and a bass loop, all made with WebAudio at runtime, no audio files
-- Deterministic city generation from a fixed seed, so the same city builds every time
-
-## Screenshots
-
-The four images in `screenshots/` are real renders of this game running in desktop Chrome. Each was taken from a staged opening moment of the same game, selected with a `?shot=` URL parameter (`cover`, `street`, `mission`, `chase`): a downtown chase with two wanted stars and a job in progress, Rico on foot at the marina, the timed Harbor Heist delivery, and a four-star pursuit on Palm Ave.
+- Open world: a seeded city of avenues, streets, districts, a park, a beach and a marina, the same every run
+- Driving: arcade handling with acceleration, steering, handbrake drifts and building bumps
+- Car theft: step up to any parked or traffic car and take it, at the cost of wanted stars
+- Wanted level: five stars, police cruisers that chase and ram, heat that cools when you lay low
+- Missions and story: three chapters with map markers, objectives, timers and cash payouts
+- Combat: punches up close and a pistol aimed with the mouse
+- HUD: cash, health, ammo, wanted stars, mission objective, timer, speed and a live minimap
+- Save: progress autosaves after every completed mission and can be saved from the pause menu
+- Sound: engine hum, sirens, gunshots and chimes synthesized live with Web Audio, no audio files
+- Screens: title screen, pause menu, busted and wasted screens, and a restart
+- Deterministic: the city, the traffic and the pedestrians are built from one seed, so the same seed always builds the same Solmar Bay
 
 ## Controls
 
-| Keys | Action |
+| Key | Action |
 | --- | --- |
-| W A S D / arrows | Walk or drive |
-| E | Steal / enter car, exit car, interact |
-| Space | Handbrake |
-| Shift | Sprint on foot |
+| W A S D / Arrows | Move on foot, drive in a car |
+| Shift | Sprint |
+| E | Enter or exit a car |
 | F | Punch |
-| M | Mute sound |
-| Esc / P | Pause |
+| Mouse + Click | Aim and shoot |
+| Space | Handbrake |
+| N | Start the next mission |
+| M | Show the current objective |
+| P / Esc | Pause |
+| R | Restart after busted or wasted |
 
 ## Run it
 
-Serve the `game/` folder with any static file server and open `index.html` in desktop Chrome:
+Serve the `game/` folder with any static file server and open `game/index.html` in desktop Chrome. The game is plain static files and makes no network requests.
 
 ```sh
-cd game
-python3 -m http.server 8080
+npx serve game
 ```
 
-Then open http://localhost:8080 in the browser. No build step and no network requests: every script, style and sound is a file under `game/` or synthesized at runtime.
+Or with Python:
 
-To build the entry output (copies `game/` and `screenshots/` and writes `dossier.json`), run the entrypoint from the repository root:
+```sh
+python3 -m http.server 8080 --directory game
+```
+
+Then open http://localhost:8080 in your browser and press Enter to play.
+
+## Hand in
+
+The entrypoint `main.ts` (Node 22, standard library only) copies `game/` and `screenshots/` into the output directory and writes `dossier.json` with the vendored make.fun library:
 
 ```sh
 mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 ```
 
-Node 22 or later is required. The game itself needs only a modern desktop browser.
-
 ## Layout
 
-- `game/index.html` — page, menus and HUD shell
-- `game/src/main.js` — game loop, states and screenshot scene presets
-- `game/src/world.js` — deterministic city generation
-- `game/src/player.js` — on-foot movement and arcade driving
+- `game/index.html` — the page that loads the game
+- `game/src/main.js` — the game loop, screens and screenshot scenes
+- `game/src/config.js` — tuning, palette and controls
+- `game/src/random.js` — seeded random numbers
+- `game/src/world.js` — city generation and collision
+- `game/src/player.js` — Mari on foot and behind the wheel
 - `game/src/traffic.js` — traffic cars and pedestrians
-- `game/src/police.js` — wanted level, patrol cars and officers
-- `game/src/missions.js` — the five story jobs and taxi fares
-- `game/src/render.js` — city, entities, HUD and minimap drawing
-- `game/src/audio.js` — synthesized WebAudio sound and music
-- `game/src/input.js`, `game/src/save.js`, `game/src/random.js`, `game/src/config.js` — input, persistence, seeded randomness and tuning
-- `main.ts` — entrypoint that assembles the submission output
-- `screenshots/` — four real renders of the game running in a browser
-
-## Originality
-
-Solmar Bay, Rico Vega, Marisol Reyes, the SBPD and every district, vehicle, name and story beat are invented for this game. Nothing is taken from any commercial game.
+- `game/src/police.js` — wanted level and pursuit
+- `game/src/missions.js` — the three-chapter story
+- `game/src/render.js` — the city, the cars, the HUD and the minimap
+- `game/src/audio.js` — synthesized sound
+- `game/src/input.js` — keyboard and mouse
+- `game/src/save.js` — localStorage saves
+- `main.ts` — the entry program that hands the game in
+- `screenshots/` — real renders of the game running in a browser

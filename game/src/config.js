@@ -1,75 +1,106 @@
-// config.js — tuning and look constants for Solmar Bay.
-// One place for every number that shapes how the city feels and plays.
-export const WORLD_W = 3200;
-export const WORLD_H = 2400;
-export const ROAD_STEP = 400;
-export const ROAD_HALF = 34;
-export const LANE = 17;
-export const SEA_X = 150;
-export const BEACH_W = 90;
+// Solmar Bay configuration: the city's shape, the player's numbers, the keys
+// and the palette. One place holds every tunable value so the rest of the game
+// reads constants instead of magic numbers.
 
-export const GAME_SEED = 20261119;
+export const GAME_TITLE = 'SOLMAR BAY';
+export const GAME_SUBTITLE = 'A sun-soaked coastal crime story';
+export const WORLD_SEED = 20261119;
 
+// The world is a grid of blocks separated by roads. The sea hugs the west edge.
+export const WORLD = {
+  width: 3600,
+  height: 2800,
+  block: 340,
+  road: 96,
+  beachWidth: 260,
+  seaWidth: 320,
+};
+
+// Canvas and camera.
+export const VIEW = { width: 1280, height: 800 };
+export const CAMERA = { zoom: 1.0, follow: 0.12 };
+
+// The player on foot and behind the wheel.
+export const PLAYER = {
+  radius: 13,
+  walkSpeed: 170,
+  runSpeed: 265,
+  health: 100,
+  punchDamage: 12,
+  punchRange: 34,
+  punchCooldown: 0.38,
+  pistolDamage: 26,
+  pistolRange: 420,
+  pistolCooldown: 0.28,
+  startCash: 120,
+  startAmmo: 48,
+};
+
+// Cars: top speed in px/s, acceleration, grip and how hard they hit.
+export const CAR = {
+  radius: 20,
+  accel: 420,
+  brake: 620,
+  reverseAccel: 260,
+  maxSpeed: 560,
+  maxReverse: 190,
+  turn: 2.6,
+  grip: 0.94,
+};
+
+// The wanted system: heat builds with crimes and cools when the police lose you.
+export const WANTED = {
+  max: 5,
+  stealCar: 1,
+  assault: 1,
+  shoot: 2,
+  killPed: 2,
+  decayDelay: 9,
+  decayRate: 0.55,
+  maxPolice: 6,
+};
+
+// Traffic and pedestrians.
+export const TRAFFIC = { cars: 26, peds: 46, carSpeedMin: 130, carSpeedMax: 230 };
+export const PED = { walkMin: 34, walkMax: 62, fleeSpeed: 150 };
+
+// Missions pay cash and unlock the next chapter of the story.
+export const MISSION_REWARDS = [400, 900, 1600];
+
+// The palette: warm sun, pale sand, teal water, pastel rooftops.
 export const COLORS = {
   grass: '#7fae5a',
-  grassDark: '#74a24f',
-  sand: '#e8d29a',
-  sea: '#2e7fa8',
-  seaDeep: '#1f6a92',
-  road: '#3a3d44',
-  roadEdge: '#2c2f36',
-  lane: '#d8c95a',
-  sidewalk: '#b9b3a4',
-  park: '#5d9440',
-  plaza: '#c9c2b2',
+  park: '#69a34e',
+  sand: '#ecd9a4',
+  sea: '#2e8fb0',
+  seaDeep: '#1f6f8e',
+  road: '#3d3a38',
+  roadLine: '#e8d44d',
+  sidewalk: '#b9b2a4',
+  buildingRoof: ['#c96f4a', '#d9a441', '#7d9bb5', '#b5658a', '#8a7fbf', '#5aa08a'],
+  buildingWall: '#e8e0cf',
+  player: '#f2c14e',
+  playerCar: '#e2483d',
+  police: '#20242e',
+  policeLight: '#ff2d2d',
+  policeLight2: '#2d6bff',
+  trafficCar: ['#4a7fb5', '#c9c9c9', '#5a8a4a', '#b56a3a', '#8a6fb5', '#d9d9d9'],
+  ped: ['#e8e8e8', '#7fb5d9', '#d97f7f', '#9fd97f', '#d9c97f'],
+  hudBg: 'rgba(12, 16, 24, 0.72)',
+  hudText: '#f5f0e1',
+  star: '#ffd23d',
+  marker: '#ffd23d',
 };
 
-export const DISTRICTS = [
-  { name: 'Marina', x0: 150, y0: 0, x1: 900, y1: 800, roof: ['#e8a06a', '#d98f5f', '#c97e52'], accent: '#2e7fa8' },
-  { name: 'Old Town', x0: 900, y0: 0, x1: 1900, y1: 1200, roof: ['#c96f4a', '#b95f3e', '#a85434'], accent: '#e8c85a' },
-  { name: 'Downtown', x0: 1900, y0: 0, x1: 3200, y1: 1200, roof: ['#5a7ea8', '#4a6e98', '#6a8eb8'], accent: '#7fb2d9' },
-  { name: 'Harbor', x0: 900, y0: 1200, x1: 3200, y1: 2400, roof: ['#8a7a5a', '#7a6a4a', '#9a8a6a'], accent: '#d98f5f' },
-  { name: 'Hills', x0: 150, y0: 800, x1: 900, y1: 2400, roof: ['#a85a6a', '#98504a', '#b86a5a'], accent: '#e8a06a' },
-];
-
-export const CAR_MODELS = [
-  { name: 'Solmar Comet', color: '#d94f3d', top: 430, accel: 320, grip: 2.6 },
-  { name: 'Bay Cruiser', color: '#3d7fd9', top: 380, accel: 260, grip: 2.2 },
-  { name: 'Palm Taxi', color: '#e8c832', top: 360, accel: 250, grip: 2.1 },
-  { name: 'Harbor Hauler', color: '#7a8a7a', top: 300, accel: 190, grip: 1.8 },
-  { name: 'Sunset Coupe', color: '#c93d8a', top: 450, accel: 340, grip: 2.8 },
-  { name: 'Marina Van', color: '#e8e8e8', top: 320, accel: 210, grip: 1.9 },
-  { name: 'Dune Buggy', color: '#e89a3d', top: 400, accel: 300, grip: 2.4 },
-];
-
-export const PED_SHIRTS = ['#e85a5a', '#5a8ae8', '#5ae88a', '#e8d25a', '#c95ae8', '#e8e8e8', '#3a3a3a', '#e89a5a'];
-
-export const TUNING = {
-  walkSpeed: 185,
-  sprintSpeed: 265,
-  carReverseTop: 140,
-  brake: 520,
-  drag: 0.9,
-  offroadDrag: 1.6,
-  punchRange: 34,
-  punchDamage: 34,
-  playerHealth: 100,
-  copTouchDamage: 8,
-  wantedDecaySeconds: 26,
-  policeSpawnDelay: 2.2,
-  trafficCount: 26,
-  pedCount: 42,
-  coinCount: 20,
-  coinValue: 150,
-  taxiFare: 120,
-};
-
+// Keyboard controls, shown on the start screen and in the pause menu.
 export const CONTROLS = [
-  ['W A S D / arrows', 'Walk or drive'],
-  ['E', 'Steal / enter car, exit car, interact'],
-  ['Space', 'Handbrake'],
-  ['Shift', 'Sprint on foot'],
+  ['W A S D / Arrows', 'Move / drive'],
+  ['Shift', 'Sprint'],
+  ['E', 'Enter / exit car'],
   ['F', 'Punch'],
-  ['M', 'Mute sound'],
-  ['Esc / P', 'Pause'],
+  ['Mouse + Click', 'Aim and shoot'],
+  ['Space', 'Handbrake'],
+  ['M', 'Toggle mission list'],
+  ['P / Esc', 'Pause'],
+  ['R', 'Restart after busted'],
 ];

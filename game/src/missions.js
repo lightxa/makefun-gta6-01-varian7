@@ -1,203 +1,174 @@
-// missions.js — the Solmar Bay story: five jobs for Rico Vega, handed out
-// by fixer Marisol Reyes, plus taxi fares and Bay coins on the side.
-// A mission is a list of steps; each step names a place or a condition and
-// the game checks it every frame. Finish one to unlock the next.
+// The story of Solmar Bay: three chapters for Mari Vega, each with steps, a
+// map marker, a timer where the job demands one, and a cash payout. Missions
+// are data plus a small state machine; the renderer reads the current step for
+// its objective text and marker.
+
+import { MISSION_REWARDS } from './config.js';
+
+// Chapter list: id, title, briefing, and steps. A step points at a place (by
+// key on the world) or at a condition the update function checks.
 export const MISSIONS = [
   {
     id: 'first-wheels',
-    title: 'First Wheels',
-    briefing: 'Marisol needs a driver. Steal any car on the street, then bring it to her garage. No cops, no fuss.',
-    reward: 400,
+    title: 'Chapter 1: First Wheels',
+    briefing: "Rico needs a clean car. Take any parked car on the street and bring it to his garage. Don't let the cops see you take it.",
+    reward: MISSION_REWARDS[0],
     steps: [
-      { type: 'steal', label: 'Steal a car (walk up to one and press E)' },
-      { type: 'goto', x: 1000, y: 200, r: 90, label: "Drive to Marisol's Garage" },
+      { kind: 'steal', text: 'Steal a car and drive it', place: null },
+      { kind: 'goto', text: "Deliver the car to Rico's Garage", place: 'garage', radius: 90 },
     ],
   },
   {
-    id: 'bayfront-pickup',
-    title: 'Bayfront Pickup',
-    briefing: 'A package waits at the Marina Pier. Grab it, then run it to the Harbor Docks. The pier is watched, expect heat.',
-    reward: 700,
+    id: 'bay-run',
+    title: 'Chapter 2: The Bay Run',
+    briefing: 'A courier job across town. Hit every checkpoint before the clock runs out. The streets are yours, the timer is not.',
+    reward: MISSION_REWARDS[1],
     steps: [
-      { type: 'goto', x: 300, y: 600, r: 80, label: 'Pick up the package at Marina Pier' },
-      { type: 'goto', x: 2800, y: 2100, r: 90, label: 'Deliver to the Harbor Docks' },
+      { kind: 'checkpoint', text: 'Reach checkpoint 1 of 4', place: 'pier', radius: 80 },
+      { kind: 'checkpoint', text: 'Reach checkpoint 2 of 4', place: 'plaza', radius: 80 },
+      { kind: 'checkpoint', text: 'Reach checkpoint 3 of 4', place: 'hotel', radius: 80 },
+      { kind: 'checkpoint', text: 'Reach checkpoint 4 of 4', place: 'depot', radius: 80 },
     ],
+    timer: 150,
   },
   {
-    id: 'getaway-driver',
-    title: 'Getaway Driver',
-    briefing: 'The crew is waiting at Solmar Plaza. Pick them up, then lose the cops: drop to zero stars before you park at the warehouse.',
-    reward: 1000,
+    id: 'harbor-heat',
+    title: 'Chapter 3: Harbor Heat',
+    briefing: 'Pick up the package at the Harbor Depot, then shake a two-star tail and bring it to the Old Pier. Lose the cops first or the drop is burned.',
+    reward: MISSION_REWARDS[2],
     steps: [
-      { type: 'goto', x: 1590, y: 790, r: 90, label: 'Pick up the crew at Solmar Plaza' },
-      { type: 'loseWanted', label: 'Lose the cops (wanted level 0)' },
-      { type: 'goto', x: 2600, y: 1400, r: 90, label: 'Park at the Bay Warehouse' },
-    ],
-  },
-  {
-    id: 'harbor-heist',
-    title: 'Harbor Heist',
-    briefing: 'A Harbor Hauler full of goods sits at the docks. Take it and bring it to the warehouse in 90 seconds. Drive like the bay is on fire.',
-    reward: 1500,
-    steps: [
-      { type: 'goto', x: 2800, y: 2100, r: 90, label: 'Reach the Harbor Docks' },
-      { type: 'timed', seconds: 90, x: 2600, y: 1400, r: 100, label: 'Deliver the hauler to the Bay Warehouse (90s)' },
-    ],
-  },
-  {
-    id: 'king-of-the-bay',
-    title: 'King of the Bay',
-    briefing: 'One last run: take the package to the Hilltop Mansion. Every cop in Solmar Bay will be on you. Finish this and the bay is yours.',
-    reward: 2500,
-    steps: [
-      { type: 'goto', x: 700, y: 2000, r: 100, label: 'Reach the Hilltop Mansion' },
-      { type: 'survive', seconds: 20, label: 'Survive the heat for 20 seconds' },
+      { kind: 'goto', text: 'Pick up the package at the Harbor Depot', place: 'depot', radius: 80 },
+      { kind: 'lose-heat', text: 'Lose the police (get your wanted level to zero)', place: null },
+      { kind: 'goto', text: 'Deliver the package to the Old Pier', place: 'pier', radius: 90 },
     ],
   },
 ];
 
-export class MissionRunner {
-  constructor() {
-    this.active = null;
-    this.stepIndex = 0;
-    this.stepTimer = 0;
-    this.stepDoneFlash = 0;
-    this.completed = [];
-  }
+// Fresh mission state: nothing started, no chapter active.
+export function createMissionState() {
+  return {
+    index: 0,
+    step: 0,
+    active: false,
+    done: false,
+    timer: 0,
+    startedAt: 0,
+    message: '',
+    messageAt: 0,
+    completed: [],
+  };
+}
 
-  start(index, game) {
-    const def = MISSIONS[index];
-    if (!def) return false;
-    this.active = { def, index };
-    this.stepIndex = 0;
-    this.stepTimer = 0;
-    game.toast(`New job: ${def.title}`, def.briefing);
-    game.audio.jingle();
-    if (def.id === 'getaway-driver') game.police.addWanted(2, 'Crew pickup spotted');
-    if (def.id === 'king-of-the-bay') game.police.addWanted(3, 'Mansion run');
-    if (def.id === 'bayfront-pickup') game.police.addWanted(1, 'Pier watch');
-    return true;
-  }
+// Start the next chapter, or report that the story is finished.
+export function startMission(state, now) {
+  if (state.index >= MISSIONS.length) return null;
+  const mission = MISSIONS[state.index];
+  state.active = true;
+  state.step = 0;
+  state.done = false;
+  state.timer = mission.timer || 0;
+  state.startedAt = now;
+  state.message = mission.title;
+  state.messageAt = now;
+  return mission;
+}
 
-  currentStep() {
-    if (!this.active) return null;
-    return this.active.def.steps[this.stepIndex] || null;
-  }
+// The chapter currently running, or null.
+export function currentMission(state) {
+  if (!state.active || state.index >= MISSIONS.length) return null;
+  return MISSIONS[state.index];
+}
 
-  stepTarget() {
-    const step = this.currentStep();
-    if (!step || step.x === undefined) return null;
-    return { x: step.x, y: step.y, r: step.r || 90 };
-  }
+// The step the player is on now, or null.
+export function currentStep(state) {
+  const mission = currentMission(state);
+  if (!mission) return null;
+  return mission.steps[state.step] || null;
+}
 
-  advance(game) {
-    this.stepIndex++;
-    this.stepDoneFlash = 1.4;
-    game.audio.coin();
-    if (this.stepIndex >= this.active.def.steps.length) {
-      this.finish(game);
-    } else {
-      const step = this.currentStep();
-      game.toast('Step done', step.label);
+// The world place a step points at, or null when the step is a condition.
+export function stepTarget(state, world) {
+  const step = currentStep(state);
+  if (!step || !step.place) return null;
+  return world[step.place] || null;
+}
+
+// Step the mission one frame. Returns 'complete' when the chapter pays out,
+// 'failed' when its timer runs out, or null while it runs.
+export function updateMission(state, player, world, dt, now, effects) {
+  if (!state.active) return null;
+  const mission = currentMission(state);
+  if (!mission) return null;
+  const step = currentStep(state);
+  if (!step) return 'complete';
+
+  if (mission.timer) {
+    state.timer -= dt;
+    if (state.timer <= 0) {
+      state.active = false;
+      state.message = 'Mission failed: out of time';
+      state.messageAt = now;
+      return 'failed';
     }
   }
 
-  finish(game) {
-    const def = this.active.def;
-    game.player.cash += def.reward;
-    this.completed.push(def.id);
-    game.toast(`Job complete: ${def.title}`, `+$${def.reward}. The next job is open.`);
-    game.audio.jingle();
-    game.saveProgress();
-    this.active = null;
-    this.stepIndex = 0;
+  if (step.kind === 'steal') {
+    // Only a car taken after the chapter started counts.
+    if (state.stolenAtStart === undefined) state.stolenAtStart = player.carsStolen;
+    if (player.carsStolen > state.stolenAtStart && !player.onFoot) advanceStep(state, now);
+  } else if (step.kind === 'goto' || step.kind === 'checkpoint') {
+    const target = stepTarget(state, world);
+    if (target && Math.hypot(player.x - target.x, player.y - target.y) < step.radius) {
+      if (step.kind === 'checkpoint') {
+        effects.push({ kind: 'text', x: player.x, y: player.y - 40, text: 'Checkpoint!', life: 1.2, max: 1.2 });
+      }
+      advanceStep(state, now);
+    }
+  } else if (step.kind === 'lose-heat') {
+    if (player.wanted === 0) advanceStep(state, now);
   }
 
-  fail(game, reason) {
-    if (!this.active) return;
-    game.toast('Job failed', reason);
-    this.active = null;
-    this.stepIndex = 0;
+  // Chapter 3's tail: the moment the package is picked up, the heat arrives.
+  if (mission.id === 'harbor-heat' && state.step === 1 && state.stepJustAdvanced) {
+    state.stepJustAdvanced = false;
+    player.wanted = Math.max(player.wanted, 2);
+    player.heat = Math.max(player.heat, 2);
+    player.lastCrimeAt = now;
   }
 
-  update(dt, game) {
-    if (!this.active) return;
-    this.stepDoneFlash = Math.max(0, this.stepDoneFlash - dt);
-    const step = this.currentStep();
-    if (!step) return;
-    const p = game.player;
-    if (step.type === 'goto') {
-      const d = Math.hypot(p.x - step.x, p.y - step.y);
-      if (d < step.r) this.advance(game);
-    } else if (step.type === 'steal') {
-      if (!p.onFoot) this.advance(game);
-    } else if (step.type === 'loseWanted') {
-      if (game.police.wanted === 0) this.advance(game);
-    } else if (step.type === 'timed') {
-      this.stepTimer += dt;
-      const d = Math.hypot(p.x - step.x, p.y - step.y);
-      if (d < step.r) this.advance(game);
-      else if (this.stepTimer > step.seconds) this.fail(game, 'Out of time on the delivery.');
-    } else if (step.type === 'survive') {
-      this.stepTimer += dt;
-      if (this.stepTimer > step.seconds) this.advance(game);
-    }
+  if (state.step >= mission.steps.length) {
+    state.active = false;
+    state.done = true;
+    state.completed.push(mission.id);
+    player.cash += mission.reward;
+    player.missionsDone++;
+    state.message = `${mission.title} complete: +$${mission.reward}`;
+    state.messageAt = now;
+    state.index++;
+    return 'complete';
   }
+  return null;
+}
 
-  objectiveText() {
-    if (!this.active) return null;
-    const step = this.currentStep();
-    if (!step) return null;
-    let label = step.label;
-    if (step.type === 'timed') {
-      const left = Math.max(0, Math.ceil(step.seconds - this.stepTimer));
-      label += ` — ${left}s left`;
-    }
-    if (step.type === 'survive') {
-      const left = Math.max(0, Math.ceil(step.seconds - this.stepTimer));
-      label += ` — ${left}s`;
-    }
-    return { title: this.active.def.title, label };
+// Move to the next step and stamp the banner message.
+function advanceStep(state, now) {
+  state.step++;
+  state.stepJustAdvanced = true;
+  const mission = currentMission(state);
+  const step = mission && mission.steps[state.step];
+  if (step) {
+    state.message = step.text;
+    state.messageAt = now;
   }
 }
 
-// Taxi fares: a side job that pays for quick driving.
-export class TaxiJob {
-  constructor() {
-    this.active = false;
-    this.pickup = null;
-    this.dropoff = null;
-    this.phase = 'pickup';
-    this.timer = 0;
+// The objective line the HUD shows.
+export function objectiveText(state) {
+  const mission = currentMission(state);
+  if (!mission) {
+    if (state.index >= MISSIONS.length) return 'Story complete. Free roam: Solmar Bay is yours.';
+    return 'Press N to start the next mission.';
   }
-  start(x, y, rng) {
-    this.active = true;
-    this.phase = 'pickup';
-    this.pickup = { x, y };
-    this.dropoff = { x: rng.range(400, 2900), y: rng.range(300, 2100) };
-    this.timer = 0;
-  }
-  update(dt, game) {
-    if (!this.active) return;
-    this.timer += dt;
-    const p = game.player;
-    if (this.phase === 'pickup') {
-      if (Math.hypot(p.x - this.pickup.x, p.y - this.pickup.y) < 70) {
-        this.phase = 'dropoff';
-        game.toast('Passenger aboard', 'Drive them to the yellow marker.');
-      }
-    } else if (Math.hypot(p.x - this.dropoff.x, p.y - this.dropoff.y) < 80) {
-      this.active = false;
-      const fare = 120 + Math.floor(this.timer);
-      game.player.cash += fare;
-      game.taxiDone = (game.taxiDone || 0) + 1;
-      game.toast('Fare complete', `+$${fare} for the ride.`);
-      game.audio.jingle();
-      game.saveProgress();
-    }
-  }
-  target() {
-    if (!this.active) return null;
-    return this.phase === 'pickup' ? this.pickup : this.dropoff;
-  }
+  const step = currentStep(state);
+  return step ? step.text : mission.title;
 }

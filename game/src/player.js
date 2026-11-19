@@ -1,153 +1,221 @@
-// player.js — Rico Vega on foot and behind the wheel.
-// On foot: walk, sprint, punch. In a car: arcade driving with steering that
-// tightens with speed, a handbrake for sliding, and collisions that slow
-// the car instead of stopping the fun.
-import { clampToWorld, hitsBuilding, onRoad } from './world.js';
-import { TUNING } from './config.js';
+// The player: Marisol "Mari" Vega, a driver for hire in Solmar Bay. On foot
+// she walks, runs, punches and shoots; in a car she drives it, and the car she
+// is driving is the one the camera follows.
 
-export function makeCar(x, y, model, angle) {
+import { PLAYER, CAR, WORLD } from './config.js';
+import { clamp, angleDelta } from './random.js';
+import { collideBuildings, clampToWorld, isInSea } from './world.js';
+
+// A fresh player at the garage, on foot, with starting cash and ammo.
+export function createPlayer(spawn) {
   return {
-    x, y, angle: angle || 0, speed: 0,
-    model, color: model.color, name: model.name,
-    top: model.top, accel: model.accel, grip: model.grip,
-    health: 100, stolen: false, isPlayerCar: false,
+    x: spawn.x,
+    y: spawn.y,
+    angle: spawn.angle,
+    r: PLAYER.radius,
+    health: PLAYER.health,
+    cash: PLAYER.startCash,
+    ammo: PLAYER.startAmmo,
+    onFoot: true,
+    car: null,
+    speed: 0,
+    sprinting: false,
+    punchTimer: 0,
+    shootTimer: 0,
+    hurtTimer: 0,
+    driving: false,
+    wanted: 0,
+    heat: 0,
+    lastCrimeAt: -999,
+    kills: 0,
+    carsStolen: 0,
+    missionsDone: 0,
   };
 }
 
-export class Player {
-  constructor(x, y) {
-    this.x = x;
-    this.y = y;
-    this.angle = -Math.PI / 2;
-    this.speed = 0;
-    this.onFoot = true;
-    this.car = null;
-    this.health = TUNING.playerHealth;
-    this.cash = 250;
-    this.punchTimer = 0;
-    this.punchCooldown = 0;
-    this.hurtTimer = 0;
-    this.stealFlash = 0;
+// Step the player one frame. Input is the shared input state; cars is the list
+// of drivable cars; effects collects particles and floating text for the renderer.
+export function updatePlayer(player, input, world, cars, dt, effects, now) {
+  player.punchTimer = Math.max(0, player.punchTimer - dt);
+  player.shootTimer = Math.max(0, player.shootTimer - dt);
+  player.hurtTimer = Math.max(0, player.hurtTimer - dt);
+
+  if (player.onFoot) {
+    updateOnFoot(player, input, world, dt);
+  } else {
+    updateDriving(player, input, world, cars, dt, effects);
   }
 
-  update(dt, input, world, game) {
-    this.punchCooldown = Math.max(0, this.punchCooldown - dt);
-    this.hurtTimer = Math.max(0, this.hurtTimer - dt);
-    this.stealFlash = Math.max(0, this.stealFlash - dt);
-    if (this.onFoot) this.updateOnFoot(dt, input, world, game);
-    else this.updateDriving(dt, input, world, game);
-    if (this.punchTimer > 0) this.punchTimer -= dt;
+  // Heat cools only after a quiet stretch with no new crime.
+  if (player.wanted > 0 && now - player.lastCrimeAt > 9) {
+    player.heat -= 0.55 * dt;
+    if (player.heat <= 0) {
+      player.heat = 0;
+      player.wanted = 0;
+    }
+  }
+  return player;
+}
+
+// Walking and running, with building collision and the sea as a wall.
+function updateOnFoot(player, input, world, dt) {
+  let mx = 0;
+  let my = 0;
+  if (input.up) my -= 1;
+  if (input.down) my += 1;
+  if (input.left) mx -= 1;
+  if (input.right) mx += 1;
+  const moving = mx !== 0 || my !== 0;
+  player.sprinting = !!input.sprint && moving;
+  const speed = player.sprinting ? PLAYER.runSpeed : PLAYER.walkSpeed;
+  if (moving) {
+    const len = Math.hypot(mx, my);
+    player.x += (mx / len) * speed * dt;
+    player.y += (my / len) * speed * dt;
+    player.angle = Math.atan2(my, mx);
+    player.speed = speed;
+  } else {
+    player.speed = 0;
+  }
+  collideBuildings(world, player);
+  clampToWorld(world, player);
+  if (isInSea(world, player.x, player.y)) player.x = WORLD.seaWidth + player.r;
+}
+
+// Driving: arcade handling with acceleration, steering that scales with speed,
+// a handbrake for sharp turns, and building bumps that slow the car.
+function updateDriving(player, input, world, cars, dt, effects) {
+  const car = player.car;
+  if (!car) {
+    player.onFoot = true;
+    return;
+  }
+  const forward = input.up ? 1 : input.down ? -0.55 : 0;
+  const steer = (input.left ? -1 : 0) + (input.right ? 1 : 0);
+  const speedSign = car.speed >= 0 ? 1 : -1;
+
+  if (forward > 0) car.speed += CAR.accel * dt;
+  else if (forward < 0) car.speed -= CAR.reverseAccel * dt * 2.2;
+  else car.speed *= Math.pow(0.4, dt);
+  if (input.handbrake) car.speed *= Math.pow(0.12, dt);
+
+  car.speed = clamp(car.speed, -CAR.maxReverse, CAR.maxSpeed);
+  const steerAmount = steer * CAR.turn * dt * clamp(Math.abs(car.speed) / 140, 0, 1);
+  car.angle += steerAmount * speedSign;
+  car.x += Math.cos(car.angle) * car.speed * dt;
+  car.y += Math.sin(car.angle) * car.speed * dt;
+
+  // Skid smoke when the handbrake is held at speed.
+  if (input.handbrake && Math.abs(car.speed) > 200 && Math.random() < 0.6) {
+    effects.push({
+      kind: 'smoke',
+      x: car.x - Math.cos(car.angle) * 22,
+      y: car.y - Math.sin(car.angle) * 22,
+      life: 0.6, max: 0.6,
+    });
   }
 
-  updateOnFoot(dt, input, world, game) {
-    const sprint = input.down('ShiftLeft') || input.down('ShiftRight');
-    const speed = sprint ? TUNING.sprintSpeed : TUNING.walkSpeed;
-    let mx = 0;
-    let my = 0;
-    if (input.down('KeyW') || input.down('ArrowUp')) my -= 1;
-    if (input.down('KeyS') || input.down('ArrowDown')) my += 1;
-    if (input.down('KeyA') || input.down('ArrowLeft')) mx -= 1;
-    if (input.down('KeyD') || input.down('ArrowRight')) mx += 1;
-    if (mx !== 0 || my !== 0) {
-      const len = Math.hypot(mx, my);
-      mx /= len;
-      my /= len;
-      this.angle = Math.atan2(my, mx);
-      const nx = this.x + mx * speed * dt;
-      const ny = this.y + my * speed * dt;
-      if (!hitsBuilding(world, nx, this.y, 14)) this.x = nx;
-      if (!hitsBuilding(world, this.x, ny, 14)) this.y = ny;
-      const c = clampToWorld(this.x, this.y);
-      this.x = c.x;
-      this.y = c.y;
-      game.footstep(dt, sprint);
-    }
-    if (input.hit('KeyF') && this.punchCooldown <= 0) {
-      this.punchTimer = 0.22;
-      this.punchCooldown = 0.45;
-      game.tryPunch(this);
+  if (collideBuildings(world, car)) {
+    car.speed *= 0.55;
+    if (Math.abs(car.speed) > 260) {
+      effects.push({ kind: 'spark', x: car.x, y: car.y, life: 0.3, max: 0.3 });
     }
   }
+  clampToWorld(world, car);
+  if (isInSea(world, car.x, car.y)) {
+    car.x = WORLD.seaWidth + CAR.radius;
+    car.speed *= 0.4;
+  }
+  player.x = car.x;
+  player.y = car.y;
+  player.angle = car.angle;
+  player.speed = car.speed;
+}
 
-  updateDriving(dt, input, world, game) {
-    const car = this.car;
-    if (!car) { this.onFoot = true; return; }
-    const throttle = input.throttle();
-    const steer = input.steer();
-    const handbrake = input.down('Space');
-    const onRoadNow = onRoad(car.x, car.y);
-    const drag = onRoadNow ? TUNING.drag : TUNING.offroadDrag;
-    if (throttle > 0) car.speed += car.accel * throttle * dt;
-    else if (throttle < 0) {
-      if (car.speed > 20) car.speed -= TUNING.brake * dt;
-      else car.speed -= car.accel * 0.55 * dt;
+// Step into the nearest car within reach. Stealing a stranger's car is a crime.
+export function enterCar(player, cars, now, effects) {
+  let best = null;
+  let bestD = 70;
+  for (const car of cars) {
+    if (car.driver === 'player') continue;
+    const d = Math.hypot(car.x - player.x, car.y - player.y);
+    if (d < bestD) {
+      best = car;
+      bestD = d;
     }
-    car.speed -= car.speed * drag * dt * 0.55;
-    if (handbrake) car.speed -= car.speed * 2.4 * dt;
-    car.speed = Math.max(-TUNING.carReverseTop, Math.min(car.top, car.speed));
-    if (Math.abs(car.speed) < 4 && throttle === 0) car.speed = 0;
-    const steerAuthority = Math.min(1, Math.abs(car.speed) / 90) * (handbrake ? 1.5 : 1);
-    car.angle += steer * car.grip * steerAuthority * dt * Math.sign(car.speed || 1);
-    const nx = car.x + Math.cos(car.angle) * car.speed * dt;
-    const ny = car.y + Math.sin(car.angle) * car.speed * dt;
-    const hit = hitsBuilding(world, nx, ny, 16);
-    if (hit) {
-      if (Math.abs(car.speed) > 160) {
-        game.onCrash(Math.abs(car.speed));
-        car.health -= 8;
-      }
-      car.speed *= -0.25;
-    } else {
-      car.x = nx;
-      car.y = ny;
-    }
-    const c = clampToWorld(car.x, car.y);
-    if (c.x !== car.x || c.y !== car.y) { car.speed *= 0.4; }
-    car.x = c.x;
-    car.y = c.y;
-    if (handbrake && Math.abs(car.speed) > 120 && Math.random() < 0.5) {
-      game.addSkid(car.x, car.y, car.angle);
-    }
-    this.x = car.x;
-    this.y = car.y;
-    this.angle = car.angle;
-    this.speed = car.speed;
-    game.audio.setEngine(Math.abs(car.speed) / car.top, true);
   }
+  if (!best) return false;
+  const stolen = best.owner !== 'player';
+  best.driver = 'player';
+  best.owner = 'player';
+  player.car = best;
+  player.onFoot = false;
+  player.driving = true;
+  if (stolen) {
+    player.carsStolen++;
+    addHeat(player, 1, now);
+    effects.push({ kind: 'text', x: player.x, y: player.y - 30, text: 'Car stolen!', life: 1.4, max: 1.4 });
+  }
+  return true;
+}
 
-  enterCar(car, game) {
-    this.car = car;
-    this.onFoot = false;
-    car.isPlayerCar = true;
-    if (car.stolen === false && !car.owned) {
-      car.stolen = true;
-      this.stealFlash = 1.2;
-      game.police.addWanted(1, 'Car stolen');
-    }
-    game.audio.ensure();
-  }
+// Step out of the car, leaving it parked where it stops.
+export function exitCar(player) {
+  if (!player.car) return;
+  const car = player.car;
+  car.driver = null;
+  const side = player.angle + Math.PI / 2;
+  player.x = car.x + Math.cos(side) * 34;
+  player.y = car.y + Math.sin(side) * 34;
+  player.car = null;
+  player.onFoot = true;
+  player.driving = false;
+  player.speed = 0;
+}
 
-  exitCar(game) {
-    if (!this.car) return;
-    const car = this.car;
-    car.isPlayerCar = false;
-    const bx = this.x + Math.cos(this.angle + Math.PI / 2) * 34;
-    const by = this.y + Math.sin(this.angle + Math.PI / 2) * 34;
-    this.x = bx;
-    this.y = by;
-    this.car = null;
-    this.onFoot = true;
-    this.speed = 0;
-    game.audio.setEngine(0, false);
+// A punch in the direction the player faces; returns the pedestrian hit, if any.
+export function punch(player, peds, dt) {
+  if (player.punchTimer > 0 || !player.onFoot) return null;
+  player.punchTimer = PLAYER.punchCooldown;
+  const px = player.x + Math.cos(player.angle) * PLAYER.punchRange;
+  const py = player.y + Math.sin(player.angle) * PLAYER.punchRange;
+  for (const ped of peds) {
+    if (ped.dead) continue;
+    if (Math.hypot(ped.x - px, ped.y - py) < 30) return ped;
   }
+  return null;
+}
 
-  hurt(amount, game) {
-    if (this.hurtTimer > 0) return;
-    this.health -= amount;
-    this.hurtTimer = 0.7;
-    if (this.health <= 0) {
-      this.health = 0;
-      game.onWasted();
-    }
+// A shot toward the mouse; returns the pedestrian hit, if any.
+export function shoot(player, peds, mouseWorld, now) {
+  if (player.shootTimer > 0 || player.ammo <= 0 || !player.onFoot) return null;
+  player.shootTimer = PLAYER.pistolCooldown;
+  player.ammo--;
+  player.angle = Math.atan2(mouseWorld.y - player.y, mouseWorld.x - player.x);
+  addHeat(player, 2, now);
+  for (const ped of peds) {
+    if (ped.dead) continue;
+    const dx = ped.x - player.x;
+    const dy = ped.y - player.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist > PLAYER.pistolRange) continue;
+    const aim = Math.atan2(dy, dx);
+    if (Math.abs(angleDelta(player.angle, aim)) < 0.12) return ped;
   }
+  return null;
+}
+
+// Raise the wanted level by a crime and stamp the time of the crime.
+export function addHeat(player, stars, now) {
+  player.wanted = Math.min(5, player.wanted + stars);
+  player.heat = player.wanted;
+  player.lastCrimeAt = now;
+}
+
+// Hurt the player; returns true when the player is down.
+export function hurtPlayer(player, damage) {
+  if (player.hurtTimer > 0) return false;
+  player.hurtTimer = 0.5;
+  player.health -= damage;
+  return player.health <= 0;
 }
